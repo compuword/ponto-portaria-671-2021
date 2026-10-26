@@ -27,6 +27,9 @@ pequeno e focado em vez de adaptar algo que nao foi pensado pra isso.
   da pra burlar so editando o HTML).
 - Confirmacao antes de registrar, observacao opcional por registro.
 - Colaborador ve o **proprio** historico completo, mes a mes.
+- Cada colaborador troca a **propria senha** em `minha_senha.php` (pede a
+  senha atual, minimo 8 caracteres, fica registrada na auditoria como
+  `trocou_senha`); o admin continua podendo redefinir uma senha esquecida.
 - Atestado medico (CID, CRM, dias, arquivo anexo) -- o proprio colaborador
   pode enviar, ou o admin lanca em nome dele. Arquivo fica em BLOB no banco
   (nunca em disco). Dias cobertos por atestado aparecem automaticamente no

@@ -31,7 +31,7 @@ $ano_seguinte = $mes === 12 ? $ano + 1 : $ano;
 <div class="caixa" style="max-width:720px">
     <img src="/img/logo.png" alt="Compuword" class="logo">
     <h1>Meu ponto -- <?= htmlspecialchars($func['nome']) ?></h1>
-    <p><a href="/bater.php">Voltar</a> | <a href="/logout.php">Sair</a></p>
+    <p><a href="/bater.php">Voltar</a> | <a href="/minha_senha.php">Alterar minha senha</a> | <a href="/logout.php">Sair</a></p>
 
     <p>
         <a href="?ano=<?= $ano_anterior ?>&mes=<?= $mes_anterior ?>">&laquo; anterior</a>

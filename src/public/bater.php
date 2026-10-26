@@ -52,7 +52,7 @@ $registros = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <div class="caixa">
     <img src="/img/logo.png" alt="Compuword" class="logo">
     <h1>Ola, <?= htmlspecialchars($func['nome']) ?></h1>
-    <p><a href="/logout.php">Sair</a><?= $eh_admin ? ' | <a href="/admin.php">Administracao</a>' : '' ?></p>
+    <p><a href="/logout.php">Sair</a> | <a href="/minha_senha.php">Alterar minha senha</a><?= $eh_admin ? ' | <a href="/admin.php">Administracao</a>' : '' ?></p>
     <?php if ($msg !== ''): ?>
         <p class="ok"><?= htmlspecialchars($msg) ?></p>
     <?php endif; ?>
