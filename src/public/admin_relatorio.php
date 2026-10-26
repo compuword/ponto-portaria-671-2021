@@ -32,6 +32,7 @@ function ponto_linhas_relatorio(string $escopo, int $funcionario_id, int $ano, i
                 'saida' => $d['saida'],
                 'horas' => $d['horas'],
                 'observacao' => $d['observacao'],
+                'atestado_parcial' => $d['atestado_horas'],
             ];
         }
     }
@@ -49,7 +50,8 @@ if (isset($_GET['baixar'])) {
     $sufixo = $escopo === 'todos' ? 'todos' : (string)$funcionario_id;
     $nome_base = 'ponto_' . $sufixo . '_' . sprintf('%04d-%02d', $ano, $mes);
 
-    $cabecalho = ['Funcionario', 'Dia', 'Dia da semana', 'Entrada', 'Pausa', 'Retorno', 'Saida', 'Horas trabalhadas', 'Observacao'];
+    // "Atestado parcial (horas)" = tempo de consulta/exame no mesmo dia, ja descontado de "Horas trabalhadas"; ultima coluna de proposito.
+    $cabecalho = ['Funcionario', 'Dia', 'Dia da semana', 'Entrada', 'Pausa', 'Retorno', 'Saida', 'Horas trabalhadas', 'Observacao', 'Atestado parcial (horas)'];
     $nota_fuso = $escopo === 'todos'
         ? 'Horarios no fuso de cada colaborador (padrao: ' . ponto_rotulo_fuso(PONTO_FUSO_PADRAO) . ')'
         : 'Horarios no fuso: ' . ponto_rotulo_fuso(ponto_fuso_do_funcionario($funcionario_id));

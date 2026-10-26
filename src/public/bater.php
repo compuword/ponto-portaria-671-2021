@@ -81,7 +81,7 @@ $registros = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </form>
 
     <h2>Meus ultimos registros</h2>
-    <p><a href="/meu_ponto.php">Ver meu ponto completo (por mes)</a> | <a href="/meu_atestado.php">Enviar atestado medico</a></p>
+    <p><a href="/meu_ponto.php">Ver meu ponto completo (por mes)</a> | <a href="/meu_atestado.php">Atestado medico / consulta no mesmo dia</a></p>
     <table>
         <tr><th>Tipo</th><th>Quando</th><th>Obs.</th></tr>
         <?php foreach ($registros as $r): ?>

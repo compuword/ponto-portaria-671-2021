@@ -86,6 +86,11 @@ CREATE TABLE dbo.atestados_medicos (
     funcionario_id INT NOT NULL FOREIGN KEY REFERENCES dbo.funcionarios(id),
     data_inicio DATE NOT NULL,
     dias_afastamento INT NOT NULL,
+    -- Atestado PARCIAL (consulta/exame no meio do expediente, volta no mesmo dia):
+    -- hora de saida e de volta em data_inicio, no fuso do colaborador. Ambas NULL =
+    -- afastamento de dia(s) inteiro(s).
+    hora_inicio TIME(0) NULL,
+    hora_fim TIME(0) NULL,
     cid VARCHAR(10) NULL,
     crm_medico VARCHAR(20) NULL,
     observacao NVARCHAR(500) NULL,
@@ -96,7 +101,11 @@ CREATE TABLE dbo.atestados_medicos (
     ip_origem VARCHAR(45) NULL,
     user_agent NVARCHAR(500) NULL,
     hostname_origem VARCHAR(255) NULL,
-    criado_em DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    criado_em DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT CK_atestados_parcial CHECK (
+        (hora_inicio IS NULL AND hora_fim IS NULL)
+        OR (hora_inicio IS NOT NULL AND hora_fim IS NOT NULL AND hora_fim > hora_inicio AND dias_afastamento = 1)
+    )
 );
 GO
 

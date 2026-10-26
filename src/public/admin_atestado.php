@@ -4,20 +4,34 @@ session_start();
 require __DIR__ . '/../config.php';
 
 $admin = ponto_require_admin();
+$tem_parcial = ponto_tem_atestado_parcial();
 $erro = '';
 $ok = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ponto_csrf_check();
+    $parcial = $tem_parcial && (string)($_POST['tipo_atestado'] ?? 'dias') === 'parcial';
     $funcionario_id = (int)($_POST['funcionario_id'] ?? 0);
     $data_inicio = (string)($_POST['data_inicio'] ?? '');
-    $dias = (int)($_POST['dias_afastamento'] ?? 0);
+    $dias = $parcial ? 1 : (int)($_POST['dias_afastamento'] ?? 0);
     $cid = trim((string)($_POST['cid'] ?? '')) ?: null;
     $crm = trim((string)($_POST['crm_medico'] ?? '')) ?: null;
     $observacao = trim((string)($_POST['observacao'] ?? '')) ?: null;
 
+    $hora_inicio = null;
+    $hora_fim = null;
+    $erro_horas = null;
+    if ($parcial) {
+        [$hora_inicio, $hora_fim, $erro_horas] = ponto_validar_horas_atestado(
+            (string)($_POST['hora_inicio'] ?? ''),
+            (string)($_POST['hora_fim'] ?? '')
+        );
+    }
+
     if ($funcionario_id <= 0 || $data_inicio === '' || $dias <= 0) {
-        $erro = 'Preencha funcionario, data de inicio e quantidade de dias.';
+        $erro = 'Preencha funcionario, data e, se for dia inteiro, a quantidade de dias.';
+    } elseif ($erro_horas !== null) {
+        $erro = $erro_horas;
     } else {
         $arquivo_nome = null;
         $arquivo_tipo = null;
@@ -34,11 +48,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($erro === '') {
             $pdo = ponto_db();
             $ip_atual = (string)($_SERVER['REMOTE_ADDR'] ?? '');
-            $stmt = $pdo->prepare(
-                'INSERT INTO dbo.atestados_medicos
-                    (funcionario_id, data_inicio, dias_afastamento, cid, crm_medico, observacao, arquivo_nome, arquivo_tipo, arquivo_blob, registrado_por, ip_origem, user_agent, hostname_origem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-            );
+            $colunas = 'funcionario_id, data_inicio, dias_afastamento, cid, crm_medico, observacao, arquivo_nome, arquivo_tipo, arquivo_blob, registrado_por, ip_origem, user_agent, hostname_origem';
+            $marcas = '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?';
+            if ($tem_parcial) {
+                $colunas .= ', hora_inicio, hora_fim';
+                $marcas .= ', ?, ?';
+            }
+            $stmt = $pdo->prepare('INSERT INTO dbo.atestados_medicos (' . $colunas . ') VALUES (' . $marcas . ')');
             $stmt->bindValue(1, $funcionario_id, PDO::PARAM_INT);
             $stmt->bindValue(2, $data_inicio);
             $stmt->bindValue(3, $dias, PDO::PARAM_INT);
@@ -52,9 +68,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bindValue(11, $ip_atual);
             $stmt->bindValue(12, (string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
             $stmt->bindValue(13, ponto_hostname_dhcp($ip_atual));
+            if ($tem_parcial) {
+                $stmt->bindValue(14, $hora_inicio);
+                $stmt->bindValue(15, $hora_fim);
+            }
             $stmt->execute();
 
-            ponto_log($admin['id'], 'lancou_atestado', 'funcionario_id ' . $funcionario_id . ', ' . $dias . ' dia(s) a partir de ' . $data_inicio);
+            $detalhe = $parcial
+                ? 'parcial em ' . $data_inicio . ' das ' . substr((string)$hora_inicio, 0, 5) . ' as ' . substr((string)$hora_fim, 0, 5)
+                : $dias . ' dia(s) a partir de ' . $data_inicio;
+            ponto_log($admin['id'], 'lancou_atestado', 'funcionario_id ' . $funcionario_id . ', ' . $detalhe);
             $ok = true;
         }
     }
@@ -63,8 +86,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $funcionarios = ponto_db()->query('SELECT id, login, nome FROM dbo.funcionarios WHERE ativo = 1 ORDER BY nome')->fetchAll(PDO::FETCH_ASSOC);
 $fuso_admin = ponto_fuso_do_funcionario($admin['id']);
 
+$colunas_parcial = $tem_parcial
+    ? "CONVERT(VARCHAR(5), a.hora_inicio, 108) AS hi, CONVERT(VARCHAR(5), a.hora_fim, 108) AS hf,"
+    : "NULL AS hi, NULL AS hf,";
 $stmt = ponto_db()->query(
-    "SELECT a.id, f.nome, a.data_inicio, a.dias_afastamento, a.cid, a.ip_origem,
+    "SELECT a.id, f.nome, a.data_inicio, a.dias_afastamento, a.cid, a.ip_origem, $colunas_parcial
             CONVERT(VARCHAR(19), a.criado_em, 120) AS quando,
             CASE WHEN a.arquivo_blob IS NOT NULL THEN 1 ELSE 0 END AS tem_arquivo,
             CASE WHEN a.registrado_por = a.funcionario_id THEN 'Colaborador' ELSE 'Admin' END AS enviado_por
@@ -91,10 +117,10 @@ $recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </p>
 
     <?php if ($ok): ?>
-        <p class="ok">Atestado registrado.</p>
+        <div class="banner banner-ok" role="status">Atestado registrado.</div>
     <?php endif; ?>
     <?php if ($erro !== ''): ?>
-        <p class="erro"><?= htmlspecialchars($erro) ?></p>
+        <div class="banner banner-erro" role="alert"><?= htmlspecialchars($erro) ?></div>
     <?php endif; ?>
 
     <form method="post" enctype="multipart/form-data">
@@ -107,8 +133,28 @@ $recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <?php endforeach; ?>
             </select>
         </label>
-        <label>Data de inicio<br><input type="date" name="data_inicio" required></label>
-        <label>Dias de afastamento<br><input type="number" name="dias_afastamento" min="1" required></label>
+        <?php if ($tem_parcial): ?>
+        <label>Tipo de afastamento<br>
+            <select name="tipo_atestado" id="tipo_atestado">
+                <option value="dias">Dia(s) inteiro(s)</option>
+                <option value="parcial" <?= (string)($_POST['tipo_atestado'] ?? '') === 'parcial' ? 'selected' : '' ?>>Parte do dia (consulta ou exame; volta a trabalhar no mesmo dia)</option>
+            </select>
+        </label>
+        <?php endif; ?>
+        <label>Data (de inicio, ou do dia da consulta/exame)<br><input type="date" name="data_inicio" required></label>
+        <div id="bloco-dias">
+            <label>Dias de afastamento<br><input type="number" name="dias_afastamento" min="1" value="1"></label>
+        </div>
+        <?php if ($tem_parcial): ?>
+        <div id="bloco-parcial" style="display:none">
+            <label>Hora de saida do trabalho<br><input type="time" name="hora_inicio"></label>
+            <label>Hora de volta ao trabalho<br><input type="time" name="hora_fim"></label>
+            <p style="font-size:.8rem;color:#666">
+                Horarios no fuso do colaborador. O tempo fora entra no espelho como atestado parcial e e descontado das
+                horas trabalhadas; o colaborador continua batendo entrada, pausa, retorno e saida normalmente.
+            </p>
+        </div>
+        <?php endif; ?>
         <label>CID<br><input type="text" name="cid" placeholder="Ex.: J11"></label>
         <label>CRM do medico<br><input type="text" name="crm_medico" placeholder="Ex.: CRM/SP 123456"></label>
         <label>Observacao<br><input type="text" name="observacao"></label>
@@ -118,12 +164,12 @@ $recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <h2>Ultimos atestados</h2>
     <table>
-        <tr><th>Funcionario</th><th>Inicio</th><th>Dias</th><th>CID</th><th>Enviado por</th><th>Quando</th><th>IP</th><th>Arquivo</th></tr>
+        <tr><th>Funcionario</th><th>Data</th><th>Periodo</th><th>CID</th><th>Enviado por</th><th>Quando</th><th>IP</th><th>Arquivo</th></tr>
         <?php foreach ($recentes as $r): ?>
         <tr>
             <td><?= htmlspecialchars($r['nome']) ?></td>
             <td><?= htmlspecialchars((string)$r['data_inicio']) ?></td>
-            <td><?= (int)$r['dias_afastamento'] ?></td>
+            <td><?= $r['hi'] !== null ? 'Parcial ' . htmlspecialchars((string)$r['hi']) . '-' . htmlspecialchars((string)$r['hf']) : (int)$r['dias_afastamento'] . ' dia(s)' ?></td>
             <td><?= htmlspecialchars((string)($r['cid'] ?? '')) ?></td>
             <td><?= htmlspecialchars($r['enviado_por']) ?></td>
             <td style="font-size:.8rem"><?= htmlspecialchars(ponto_utc_para_local((string)$r['quando'], $fuso_admin, 'd/m/Y H:i')) ?></td>
@@ -133,6 +179,7 @@ $recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <?php endforeach; ?>
     </table>
 </div>
+<script src="/js/atestado_tipo.js"></script>
 <script src="/js/inatividade.js"></script>
 </body>
 </html>

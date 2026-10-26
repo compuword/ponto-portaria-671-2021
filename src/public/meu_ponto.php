@@ -43,7 +43,7 @@ $ano_seguinte = $mes === 12 ? $ano + 1 : $ano;
     </p>
 
     <table>
-        <tr><th>Dia</th><th>Entrada</th><th>Pausa</th><th>Retorno</th><th>Saida</th><th>Horas</th><th>Obs.</th></tr>
+        <tr><th>Dia</th><th>Entrada</th><th>Pausa</th><th>Retorno</th><th>Saida</th><th>Horas</th><th title="Tempo de atestado parcial (consulta/exame no mesmo dia)">Atest.</th><th>Obs.</th></tr>
         <?php foreach ($linhas as $l): ?>
         <tr<?= $l['entrada'] === '' && $l['saida'] === '' ? ' style="color:#aaa"' : '' ?>>
             <td><?= substr($l['data'], 8, 2) ?>/<?= substr($l['data'], 5, 2) ?> <?= htmlspecialchars(substr($l['dia_semana'], 0, 3)) ?></td>
@@ -52,11 +52,12 @@ $ano_seguinte = $mes === 12 ? $ano + 1 : $ano;
             <td><?= htmlspecialchars($l['retorno']) ?></td>
             <td><?= htmlspecialchars($l['saida']) ?></td>
             <td><?= htmlspecialchars($l['horas']) ?></td>
+            <td><?= htmlspecialchars($l['atestado_horas']) ?></td>
             <td style="font-size:.8rem"><?= htmlspecialchars($l['observacao']) ?></td>
         </tr>
         <?php endforeach; ?>
     </table>
-    <p style="font-size:.8rem;color:#666">Linhas em cinza = dia sem nenhum registro. Horarios no fuso <?= htmlspecialchars(ponto_rotulo_fuso($fuso)) ?>.</p>
+    <p style="font-size:.8rem;color:#666">Linhas em cinza = dia sem nenhum registro. "Atest." = tempo de consulta/exame com atestado parcial (ja descontado de "Horas"). Horarios no fuso <?= htmlspecialchars(ponto_rotulo_fuso($fuso)) ?>.</p>
 </div>
 <script src="/js/inatividade.js"></script>
 </body>

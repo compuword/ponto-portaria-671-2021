@@ -40,6 +40,15 @@ pequeno e focado em vez de adaptar algo que nao foi pensado pra isso.
   pode enviar, ou o admin lanca em nome dele. Arquivo fica em BLOB no banco
   (nunca em disco). Dias cobertos por atestado aparecem automaticamente no
   relatorio no lugar das horas.
+- **Atestado parcial** (consulta ou exame no meio do expediente, com volta no
+  mesmo dia): em vez de dias, informa-se a hora em que saiu e a hora em que
+  voltou. O colaborador segue batendo entrada, pausa, retorno e saida
+  normalmente (o registro de ponto nao muda); o espelho **desconta** do tempo
+  trabalhado a parte do atestado que cai dentro dos blocos trabalhados e mostra
+  o tempo do atestado numa coluna propria ("Atest." na tela; "Atestado parcial
+  (horas)" no CSV/XLSX, ultima coluna) e na observacao. O sistema so informa os
+  numeros -- se o abono e remunerado e decisao da empresa. Varios atestados no
+  mesmo dia sao aceitos e intervalos sobrepostos contam uma vez so.
 - Lancamento manual pelo admin, para dias em que nao foi possivel bater o
   ponto pelo sistema (ex. atendimento externo fora da rede da empresa).
 - **Cadeia de hash separada** (tabela propria, so INSERT) -- qualquer
@@ -75,11 +84,14 @@ Sem dependencia de biblioteca externa nenhuma -- so extensoes do PHP core
    localhost -U sa -i schema.sql`). Troque a senha do `ponto_app` que esta
    no script antes de rodar em produção, ou altere depois com `ALTER LOGIN`.
 
-   **Banco ja existente** (criado antes do fuso horario por colaborador): rode
-   uma vez `migrations/001_fuso_horario.sql` (`sqlcmd -C -S localhost -U sa -d
-   ponto -i migrations/001_fuso_horario.sql`). E idempotente. Sem a coluna, o
-   sistema usa `America/Sao_Paulo` para todos e as telas de cadastro e edicao
-   de colaborador nao funcionam.
+   **Banco ja existente** (criado antes de cada recurso abaixo): rode, na
+   ordem, as migracoes que faltam (`sqlcmd -C -S localhost -U sa -d ponto -i
+   migrations/NNN_nome.sql`). Todas sao idempotentes.
+   - `001_fuso_horario.sql`: fuso por colaborador. Sem a coluna, o sistema usa
+     `America/Sao_Paulo` para todos e as telas de cadastro e edicao de
+     colaborador nao funcionam.
+   - `002_atestado_parcial.sql`: atestado parcial (consulta/exame no mesmo
+     dia). Sem as colunas, o formulario so oferece atestado de dia inteiro.
 
 2. **PHP**: instale o driver ODBC (`apt install php8.X-odbc` no
    Debian/Ubuntu + [ODBC Driver 18 da Microsoft](https://learn.microsoft.com/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server)).
@@ -139,6 +151,7 @@ Sem dependencia de biblioteca externa nenhuma -- so extensoes do PHP core
 schema.sql                      -- schema completo do banco
 migrations/                     -- alteracoes de schema para bancos ja existentes (rodar na ordem)
 tests/fuso_test.php             -- testes dos helpers de fuso horario (php tests/fuso_test.php, sem banco)
+tests/horas_test.php            -- testes do calculo de horas com atestado parcial (php tests/horas_test.php, sem banco)
 src/config.php                  -- conexao PDO + funcoes compartilhadas (auth, hash, relatorio, fuso horario)
 src/config.local.php.example    -- template de credenciais (copie e edite)
 src/xlsx.php                    -- gerador de .xlsx do zero (so ZipArchive)

@@ -290,6 +290,124 @@ function ponto_minutos(string $hhmm): int
     return ((int)$h) * 60 + (int)$m;
 }
 
+function ponto_fmt_minutos(int $min): string
+{
+    return sprintf('%d:%02d', intdiv($min, 60), $min % 60);
+}
+
+/** O banco ja tem as colunas do atestado parcial (migrations/002_atestado_parcial.sql)? */
+function ponto_tem_atestado_parcial(): bool
+{
+    static $tem = null;
+    if ($tem === null) {
+        try {
+            $valor = ponto_db()->query("SELECT COL_LENGTH('dbo.atestados_medicos', 'hora_inicio')")->fetchColumn();
+            $tem = $valor !== false && $valor !== null;
+        } catch (PDOException $e) {
+            $tem = false;
+        }
+    }
+    return $tem;
+}
+
+/**
+ * Valida o par de horas de um atestado parcial (consulta/exame no mesmo dia).
+ * Retorna [inicio 'HH:MM:SS', fim 'HH:MM:SS', erro]; erro null = ok.
+ */
+function ponto_validar_horas_atestado(string $inicio, string $fim): array
+{
+    $formato_ok = static fn(string $h): bool => (bool)preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $h);
+    if (!$formato_ok($inicio) || !$formato_ok($fim)) {
+        return [null, null, 'Informe a hora em que saiu e a hora em que voltou (formato HH:MM).'];
+    }
+    $inicio = substr($inicio, 0, 5);
+    $fim = substr($fim, 0, 5);
+    if ($fim <= $inicio) {
+        return [null, null, 'A hora de volta precisa ser depois da hora de saida (mesmo dia).'];
+    }
+    return [$inicio . ':00', $fim . ':00', null];
+}
+
+/** Une intervalos [ini, fim) em minutos do dia que se tocam ou se sobrepoem (para nao contar o mesmo tempo 2x). */
+function ponto_uniao_intervalos(array $intervalos): array
+{
+    usort($intervalos, static fn(array $a, array $b): int => $a[0] <=> $b[0]);
+    $uniao = [];
+    foreach ($intervalos as [$ini, $fim]) {
+        if ($fim <= $ini) {
+            continue;
+        }
+        $ultimo = count($uniao) - 1;
+        if ($ultimo >= 0 && $ini <= $uniao[$ultimo][1]) {
+            $uniao[$ultimo][1] = max($uniao[$ultimo][1], $fim);
+        } else {
+            $uniao[] = [$ini, $fim];
+        }
+    }
+    return $uniao;
+}
+
+/** Minutos de $uniao (intervalos ja unidos) que caem dentro de [$ini, $fim). */
+function ponto_minutos_dentro(array $uniao, int $ini, int $fim): int
+{
+    $total = 0;
+    foreach ($uniao as [$a, $b]) {
+        $total += max(0, min($b, $fim) - max($a, $ini));
+    }
+    return $total;
+}
+
+/**
+ * Horas do dia a partir das batidas (HH:MM no fuso do colaborador) e dos
+ * atestados PARCIAIS do mesmo dia (consulta/exame com saida e volta no meio do
+ * expediente), cada um como ['ini' => 'HH:MM', 'fim' => 'HH:MM'].
+ *
+ *  - horas  = (pausa - entrada) + (saida - retorno), MENOS a parte dos
+ *             atestados parciais que cai dentro desses dois blocos trabalhados;
+ *             'Incompleto' se faltar batida; '' se nao houve batida.
+ *  - abono  = tempo total dos atestados parciais (mesmo o que cai fora dos
+ *             blocos, ex.: chegou mais tarde por causa de uma consulta).
+ * O sistema so informa os dois numeros; se o abono e remunerado e decisao da empresa.
+ *
+ * @return array{horas: string, abono: string}
+ */
+function ponto_horas_do_dia(array $batidas, array $atestados_parciais): array
+{
+    $intervalos = [];
+    foreach ($atestados_parciais as $a) {
+        $intervalos[] = [ponto_minutos($a['ini']), ponto_minutos($a['fim'])];
+    }
+    $uniao = ponto_uniao_intervalos($intervalos);
+    $abono = 0;
+    foreach ($uniao as [$ini, $fim]) {
+        $abono += $fim - $ini;
+    }
+
+    $horas = '';
+    if ($batidas['entrada'] !== null && $batidas['almoco'] !== null && $batidas['retorno'] !== null && $batidas['saida'] !== null) {
+        $entrada = ponto_minutos($batidas['entrada']);
+        $pausa = ponto_minutos($batidas['almoco']);
+        $retorno = ponto_minutos($batidas['retorno']);
+        $saida = ponto_minutos($batidas['saida']);
+
+        $min = $pausa - $entrada + $saida - $retorno;
+        if ($min < 0) {
+            $min += 24 * 60;
+        }
+        if ($pausa > $entrada) {
+            $min -= ponto_minutos_dentro($uniao, $entrada, $pausa);
+        }
+        if ($saida > $retorno) {
+            $min -= ponto_minutos_dentro($uniao, $retorno, $saida);
+        }
+        $horas = ponto_fmt_minutos(max(0, $min));
+    } elseif ($batidas['entrada'] !== null || $batidas['almoco'] !== null || $batidas['retorno'] !== null || $batidas['saida'] !== null) {
+        $horas = 'Incompleto';
+    }
+
+    return ['horas' => $horas, 'abono' => $abono > 0 ? ponto_fmt_minutos($abono) : ''];
+}
+
 /**
  * Monta o relatorio mensal de 1 funcionario, 1 linha por DIA DO MES (inclui
  * dias sem nenhum registro). Usado tanto pela tela do colaborador
@@ -318,8 +436,11 @@ function ponto_relatorio_mensal(int $funcionario_id, int $ano, int $mes): array
     $admissao = $datas['data_admissao'] ?? null;
     $desligamento = $datas['data_desligamento'] ?? null;
 
+    // Atestado de dia(s) inteiro(s): o dia no espelho vira "Atestado" no lugar das horas.
+    $tem_parcial = ponto_tem_atestado_parcial();
     $stmt = ponto_db()->prepare(
         'SELECT data_inicio, dias_afastamento, cid FROM dbo.atestados_medicos WHERE funcionario_id = ?'
+        . ($tem_parcial ? ' AND hora_inicio IS NULL' : '')
     );
     $stmt->execute([$funcionario_id]);
     $diasAtestado = [];
@@ -329,6 +450,22 @@ function ponto_relatorio_mensal(int $funcionario_id, int $ano, int $mes): array
             $dataAt = $inicio->format('Y-m-d');
             $diasAtestado[$dataAt] = 'Atestado' . ($at['cid'] ? ' (CID ' . $at['cid'] . ')' : '');
             $inicio->modify('+1 day');
+        }
+    }
+
+    // Atestado PARCIAL (consulta/exame no meio do expediente, volta no mesmo dia): fica junto das batidas do dia.
+    $parciaisPorDia = [];
+    if ($tem_parcial) {
+        $stmt = ponto_db()->prepare(
+            "SELECT CONVERT(VARCHAR(10), data_inicio, 120) AS dia,
+                    CONVERT(VARCHAR(5), hora_inicio, 108) AS ini, CONVERT(VARCHAR(5), hora_fim, 108) AS fim, cid
+             FROM dbo.atestados_medicos
+             WHERE funcionario_id = ? AND hora_inicio IS NOT NULL AND data_inicio >= ? AND data_inicio <= ?
+             ORDER BY data_inicio, hora_inicio"
+        );
+        $stmt->execute([$funcionario_id, $inicio_mes->format('Y-m-d'), $fim_mes->modify('-1 day')->format('Y-m-d')]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $pa) {
+            $parciaisPorDia[(string)$pa['dia']][] = ['ini' => (string)$pa['ini'], 'fim' => (string)$pa['fim'], 'cid' => $pa['cid']];
         }
     }
 
@@ -379,7 +516,7 @@ function ponto_relatorio_mensal(int $funcionario_id, int $ano, int $mes): array
             $linhas[] = [
                 'data' => $data, 'dia_semana' => $dias_semana[$dow],
                 'entrada' => '', 'almoco' => '', 'retorno' => '', 'saida' => '',
-                'horas' => 'N/A', 'observacao' => '',
+                'horas' => 'N/A', 'observacao' => '', 'atestado_horas' => '',
             ];
             continue;
         }
@@ -388,21 +525,16 @@ function ponto_relatorio_mensal(int $funcionario_id, int $ano, int $mes): array
             $linhas[] = [
                 'data' => $data, 'dia_semana' => $dias_semana[$dow],
                 'entrada' => '', 'almoco' => '', 'retorno' => '', 'saida' => '',
-                'horas' => $diasAtestado[$data], 'observacao' => $diasAtestado[$data],
+                'horas' => $diasAtestado[$data], 'observacao' => $diasAtestado[$data], 'atestado_horas' => '',
             ];
             continue;
         }
 
-        $horas = '';
-        if ($p['entrada'] !== null && $p['almoco'] !== null && $p['retorno'] !== null && $p['saida'] !== null) {
-            $min = ponto_minutos($p['almoco']) - ponto_minutos($p['entrada'])
-                 + ponto_minutos($p['saida']) - ponto_minutos($p['retorno']);
-            if ($min < 0) {
-                $min += 24 * 60;
-            }
-            $horas = sprintf('%d:%02d', intdiv($min, 60), $min % 60);
-        } elseif ($p['entrada'] !== null || $p['almoco'] !== null || $p['retorno'] !== null || $p['saida'] !== null) {
-            $horas = 'Incompleto';
+        $parciais = $parciaisPorDia[$data] ?? [];
+        $calculo = ponto_horas_do_dia($p, $parciais);
+        $obs = $p['obs'];
+        foreach ($parciais as $pa) {
+            $obs[] = 'Atestado parcial ' . $pa['ini'] . '-' . $pa['fim'] . ($pa['cid'] ? ' (CID ' . $pa['cid'] . ')' : '');
         }
 
         $linhas[] = [
@@ -412,8 +544,9 @@ function ponto_relatorio_mensal(int $funcionario_id, int $ano, int $mes): array
             'almoco' => $p['almoco'] ?? '',
             'retorno' => $p['retorno'] ?? '',
             'saida' => $p['saida'] ?? '',
-            'horas' => $horas,
-            'observacao' => implode('; ', $p['obs']),
+            'horas' => $calculo['horas'],
+            'observacao' => implode('; ', $obs),
+            'atestado_horas' => $calculo['abono'],
         ];
     }
     return $linhas;
