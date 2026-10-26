@@ -45,16 +45,23 @@ function ponto_csrf_token(): string
     return $_SESSION['csrf'];
 }
 
-function ponto_csrf_check(): void
+function ponto_csrf_valido(): bool
 {
     $token = $_POST['csrf'] ?? '';
-    if (!isset($_SESSION['csrf']) || !hash_equals($_SESSION['csrf'], $token)) {
+    return isset($_SESSION['csrf']) && is_string($token) && hash_equals((string)$_SESSION['csrf'], $token);
+}
+
+function ponto_csrf_check(): void
+{
+    if (!ponto_csrf_valido()) {
         http_response_code(403);
         exit('Token invalido.');
     }
 }
 
-const PONTO_LIMITE_INATIVIDADE_SEG = 60;
+// Sessao encerrada apos 5 minutos sem atividade. O mesmo valor existe no
+// navegador (public/js/inatividade.js, LIMITE_MS) -- altere os dois juntos.
+const PONTO_LIMITE_INATIVIDADE_SEG = 300;
 
 function ponto_require_login(): array
 {

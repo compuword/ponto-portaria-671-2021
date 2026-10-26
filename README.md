@@ -42,7 +42,11 @@ pequeno e focado em vez de adaptar algo que nao foi pensado pra isso.
   de colaborador, reset de senha, lancamento manual e anotacao fica
   registrado com IP e, quando disponivel, o hostname da estacao de origem
   (lido do lease do DHCP -- ver "Limitacoes").
-- Logout automatico por inatividade (60s, configuravel).
+- Logout automatico por inatividade (5 minutos, configuravel em
+  `PONTO_LIMITE_INATIVIDADE_SEG` no `src/config.php` e `LIMITE_MS` no
+  `src/public/js/inatividade.js` -- altere os dois juntos).
+- Falha de login mostra um banner de erro na propria tela de login (nunca
+  uma pagina de erro do servidor).
 - Exportacao para contabilidade: um colaborador ou todos, em XLSX, CSV
   (separado por `;`) ou PDF -- os 3 formatos gerados do zero em PHP puro,
   sem biblioteca externa.

@@ -14,6 +14,10 @@ button:hover { background: var(--cpw-claro); color: var(--cpw-escuro); }
 .botoes { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
 .erro { color: #b00020; }
 .ok { color: #0a7d2c; }
+.banner { padding: .75rem 1rem; margin: 1rem 0; border: 1px solid; border-radius: 6px; }
+.banner-erro { background: #fdecea; border-color: #b00020; color: #7a0016; }
+.banner-aviso { background: #fff4e0; border-color: #c77700; color: #6b4200; }
+.banner-ok { background: #e6f4ea; border-color: #0a7d2c; color: #075a20; }
 table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
 th { text-align: left; padding: .4rem; border-bottom: 2px solid var(--cpw-escuro); font-size: .9rem; color: var(--cpw-escuro); }
 td { text-align: left; padding: .4rem; border-bottom: 1px solid #ddd; font-size: .9rem; }
