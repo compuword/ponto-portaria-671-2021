@@ -4,6 +4,7 @@ session_start();
 require __DIR__ . '/../config.php';
 
 $admin = ponto_require_admin();
+$fuso = ponto_fuso_do_funcionario($admin['id']);
 
 $stmt = ponto_db()->query(
     'SELECT TOP 200 l.id, f.nome AS funcionario_nome, l.login_tentado, l.acao, l.detalhe,
@@ -26,13 +27,13 @@ $linhas = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <img src="/img/logo.png" alt="Compuword" class="logo">
     <h1>Auditoria -- acessos e atividades</h1>
     <p><a href="/admin.php">Voltar</a> | <a href="/logout.php">Sair</a></p>
-    <p style="font-size:.85rem;color:#666">Ultimos 200 eventos (login, logout, inatividade, criacao/edicao de funcionario, reset de senha, lancamento manual, anotacao).</p>
+    <p style="font-size:.85rem;color:#666">Ultimos 200 eventos (login, logout, inatividade, troca de senha, criacao/edicao de funcionario, reset de senha, lancamento manual, anotacao). Horarios no seu fuso: <?= htmlspecialchars(ponto_rotulo_fuso($fuso)) ?>.</p>
 
     <table>
         <tr><th>Quando</th><th>Quem</th><th>Acao</th><th>Detalhe</th><th>IP</th><th>Estacao</th></tr>
         <?php foreach ($linhas as $l): ?>
         <tr>
-            <td style="font-size:.8rem"><?= htmlspecialchars($l['quando']) ?></td>
+            <td style="font-size:.8rem"><?= htmlspecialchars(ponto_utc_para_local((string)$l['quando'], $fuso, 'd/m/Y H:i:s')) ?></td>
             <td><?= htmlspecialchars((string)($l['funcionario_nome'] ?? $l['login_tentado'] ?? '?')) ?></td>
             <td><?= htmlspecialchars($l['acao']) ?></td>
             <td style="font-size:.8rem"><?= htmlspecialchars((string)($l['detalhe'] ?? '')) ?></td>

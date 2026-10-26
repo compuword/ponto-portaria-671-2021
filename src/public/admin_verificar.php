@@ -10,7 +10,7 @@ $stmt = ponto_db()->query(
             CONVERT(VARCHAR(33), r.registrado_em, 126) AS registrado_texto,
             CONVERT(VARCHAR(19), r.registrado_em, 120) AS quando_curto,
             r.ip_origem, r.hostname_origem, r.user_agent, r.manual, r.observacao, r.lancado_por,
-            f.nome AS funcionario_nome,
+            f.nome AS funcionario_nome, f.fuso_horario AS fuso,
             a.motivo AS anotacao,
             i.hash_anterior, i.hash_linha
      FROM dbo.registros_ponto r
@@ -84,6 +84,10 @@ foreach ($linhas as $l) {
         explicando o caso, sem tocar no registro original nem quebrar a cadeia
         de hash. A nota aparece nos relatorios no lugar das horas.
     </p>
+    <p style="font-size:.85rem;color:#666">
+        "Quando" mostra o horario no fuso de cada colaborador; embaixo, em cinza,
+        o instante exato em UTC como esta gravado (e como entra na cadeia de hash).
+    </p>
     <table>
         <tr><th>Id</th><th>Funcionario</th><th>Tipo</th><th>Quando</th><th>IP / Estacao</th><th>Obs./Anotacao</th><th></th></tr>
         <?php foreach ($linhas as $l): ?>
@@ -91,7 +95,10 @@ foreach ($linhas as $l) {
             <td><?= (int)$l['id'] ?></td>
             <td><?= htmlspecialchars($l['funcionario_nome']) ?></td>
             <td><?= htmlspecialchars($l['tipo']) ?></td>
-            <td><?= htmlspecialchars($l['quando_curto']) ?></td>
+            <td>
+                <?= htmlspecialchars(ponto_utc_para_local((string)$l['quando_curto'], ponto_fuso_ou_padrao((string)$l['fuso']), 'd/m/Y H:i:s')) ?>
+                <br><span style="font-size:.7rem;color:#888"><?= htmlspecialchars((string)$l['quando_curto']) ?> UTC</span>
+            </td>
             <td style="font-size:.75rem"><?= htmlspecialchars($l['ip_origem']) ?><?= $l['hostname_origem'] ? '<br>' . htmlspecialchars((string)$l['hostname_origem']) : '' ?></td>
             <td style="font-size:.8rem">
                 <?= htmlspecialchars((string)($l['observacao'] ?? '')) ?>

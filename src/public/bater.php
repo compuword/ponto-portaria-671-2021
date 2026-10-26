@@ -35,8 +35,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $proximo_tipo = ponto_proximo_tipo_do_dia($func['id']);
 
+$fuso = ponto_fuso_do_funcionario($func['id']);
+$agora_local = ponto_agora_local($fuso);
+
 $stmt = ponto_db()->prepare(
-    'SELECT TOP 20 tipo, registrado_em, observacao FROM dbo.registros_ponto WHERE funcionario_id = ? ORDER BY registrado_em DESC'
+    'SELECT TOP 20 tipo, CONVERT(VARCHAR(19), registrado_em, 120) AS quando, observacao FROM dbo.registros_ponto WHERE funcionario_id = ? ORDER BY registrado_em DESC'
 );
 $stmt->execute([$func['id']]);
 $registros = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -64,6 +67,8 @@ $registros = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <p class="ok">Ciclo do dia completo (entrada, pausa, retorno e saida).</p>
     <?php endif; ?>
 
+    <p style="font-size:.85rem;color:#666">Agora: <strong><?= htmlspecialchars($agora_local->format('d/m/Y H:i')) ?></strong> -- horario de <?= htmlspecialchars(ponto_rotulo_fuso($fuso)) ?></p>
+
     <form method="post" onsubmit="return confirm('Confirmar registro de ' + document.activeElement.value + '?')">
         <input type="hidden" name="csrf" value="<?= htmlspecialchars(ponto_csrf_token()) ?>">
         <div class="botoes">
@@ -82,7 +87,7 @@ $registros = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <?php foreach ($registros as $r): ?>
         <tr>
             <td><?= htmlspecialchars($r['tipo']) ?></td>
-            <td><?= htmlspecialchars((string)$r['registrado_em']) ?></td>
+            <td><?= htmlspecialchars(ponto_utc_para_local((string)$r['quando'], $fuso, 'd/m/Y H:i:s')) ?></td>
             <td style="font-size:.8rem"><?= htmlspecialchars((string)($r['observacao'] ?? '')) ?></td>
         </tr>
         <?php endforeach; ?>

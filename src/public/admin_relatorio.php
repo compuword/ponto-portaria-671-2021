@@ -50,6 +50,9 @@ if (isset($_GET['baixar'])) {
     $nome_base = 'ponto_' . $sufixo . '_' . sprintf('%04d-%02d', $ano, $mes);
 
     $cabecalho = ['Funcionario', 'Dia', 'Dia da semana', 'Entrada', 'Pausa', 'Retorno', 'Saida', 'Horas trabalhadas', 'Observacao'];
+    $nota_fuso = $escopo === 'todos'
+        ? 'Horarios no fuso de cada colaborador (padrao: ' . ponto_rotulo_fuso(PONTO_FUSO_PADRAO) . ')'
+        : 'Horarios no fuso: ' . ponto_rotulo_fuso(ponto_fuso_do_funcionario($funcionario_id));
 
     if ($formato === 'csv') {
         header('Content-Type: text/csv; charset=UTF-8');
@@ -68,6 +71,7 @@ if (isset($_GET['baixar'])) {
     if ($formato === 'pdf') {
         $texto_linhas = [];
         $texto_linhas[] = 'Compuword - Espelho de ponto - ' . sprintf('%02d/%04d', $mes, $ano);
+        $texto_linhas[] = $nota_fuso;
         $texto_linhas[] = '';
         $texto_linhas[] = sprintf('%-20s %-6s %-5s %-7s %-7s %-7s %-7s %-6s %s', 'Funcionario', 'Dia', 'Sem.', 'Entrada', 'Pausa', 'Retorno', 'Saida', 'Horas', 'Obs');
         foreach ($linhas as $l) {
@@ -92,6 +96,7 @@ if (isset($_GET['baixar'])) {
     // xlsx (padrao)
     $linhas_xlsx = [];
     $linhas_xlsx[] = ['Compuword - Espelho de ponto - ' . sprintf('%02d/%04d', $mes, $ano)];
+    $linhas_xlsx[] = [$nota_fuso];
     $linhas_xlsx[] = [];
     $linhas_xlsx[] = $cabecalho;
     foreach ($linhas as $l) {
@@ -110,8 +115,9 @@ if (isset($_GET['baixar'])) {
 }
 
 $funcionarios = ponto_db()->query('SELECT id, login, nome FROM dbo.funcionarios ORDER BY nome')->fetchAll(PDO::FETCH_ASSOC);
-$ano_atual = (int)date('Y');
-$mes_atual = (int)date('n');
+$agora_local = ponto_agora_local(ponto_fuso_do_funcionario($admin['id']));
+$ano_atual = (int)$agora_local->format('Y');
+$mes_atual = (int)$agora_local->format('n');
 ?>
 <!doctype html>
 <html lang="pt-BR">

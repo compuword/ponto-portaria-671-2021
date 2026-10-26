@@ -21,6 +21,9 @@ CREATE TABLE dbo.funcionarios (
     cargo NVARCHAR(100) NULL,
     data_admissao DATE NULL,
     data_desligamento DATE NULL,
+    -- Fuso em que o colaborador ve os proprios horarios e fecha os dias
+    -- (identificador IANA). Os instantes continuam gravados em UTC.
+    fuso_horario VARCHAR(64) NOT NULL DEFAULT 'America/Sao_Paulo',
     criado_em DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 GO

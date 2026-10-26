@@ -14,9 +14,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $is_admin_novo = isset($_POST['is_admin']) ? 1 : 0;
     $cargo = trim((string)($_POST['cargo'] ?? '')) ?: null;
     $data_admissao = trim((string)($_POST['data_admissao'] ?? '')) ?: null;
+    $fuso = (string)($_POST['fuso_horario'] ?? PONTO_FUSO_PADRAO);
 
     if ($login === '' || $nome === '' || $senha_inicial === '') {
         $erro = 'Preencha login, nome e senha inicial.';
+    } elseif (!ponto_fuso_valido($fuso)) {
+        $erro = 'Fuso horario invalido.';
     } else {
         $stmt = ponto_db()->prepare('SELECT id FROM dbo.funcionarios WHERE login = ?');
         $stmt->execute([$login]);
@@ -25,10 +28,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $hash = password_hash($senha_inicial, PASSWORD_BCRYPT);
             $stmt = ponto_db()->prepare(
-                'INSERT INTO dbo.funcionarios (login, nome, senha_hash, ativo, is_admin, cargo, data_admissao) VALUES (?, ?, ?, 1, ?, ?, ?)'
+                'INSERT INTO dbo.funcionarios (login, nome, senha_hash, ativo, is_admin, cargo, data_admissao, fuso_horario) VALUES (?, ?, ?, 1, ?, ?, ?, ?)'
             );
-            $stmt->execute([$login, $nome, $hash, $is_admin_novo, $cargo, $data_admissao]);
-            ponto_log($admin['id'], 'criou_funcionario', 'criou login ' . $login);
+            $stmt->execute([$login, $nome, $hash, $is_admin_novo, $cargo, $data_admissao, $fuso]);
+            ponto_log($admin['id'], 'criou_funcionario', 'criou login ' . $login . ' (fuso ' . $fuso . ')');
             header('Location: /admin.php?ok=1');
             exit;
         }
@@ -36,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $funcionarios = ponto_db()
-    ->query('SELECT id, login, nome, ativo, is_admin, cargo, data_admissao, data_desligamento FROM dbo.funcionarios ORDER BY nome')
+    ->query('SELECT id, login, nome, ativo, is_admin, cargo, data_admissao, data_desligamento, fuso_horario FROM dbo.funcionarios ORDER BY nome')
     ->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!doctype html>
@@ -47,7 +50,7 @@ $funcionarios = ponto_db()
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-<div class="caixa">
+<div class="caixa" style="max-width:900px">
     <img src="/img/logo.png" alt="Compuword" class="logo">
     <h1>Administracao de funcionarios</h1>
     <p><a href="/bater.php">Voltar para o ponto</a> | <a href="/admin_lancamento.php">Lancamento manual</a> | <a href="/admin_atestado.php">Atestado medico</a> | <a href="/admin_verificar.php">Verificar integridade</a> | <a href="/admin_relatorio.php">Exportar p/ contabilidade</a> | <a href="/admin_auditoria.php">Auditoria</a> | <a href="/logout.php">Sair</a></p>
@@ -60,13 +63,14 @@ $funcionarios = ponto_db()
     <?php endif; ?>
 
     <table>
-        <tr><th>Login</th><th>Nome</th><th>Cargo</th><th>Admissao</th><th>Ativo</th><th>Admin</th><th></th></tr>
+        <tr><th>Login</th><th>Nome</th><th>Cargo</th><th>Admissao</th><th>Fuso</th><th>Ativo</th><th>Admin</th><th></th></tr>
         <?php foreach ($funcionarios as $f): ?>
         <tr>
             <td><?= htmlspecialchars($f['login']) ?></td>
             <td><?= htmlspecialchars($f['nome']) ?></td>
             <td><?= htmlspecialchars((string)($f['cargo'] ?? '')) ?></td>
             <td><?= htmlspecialchars((string)($f['data_admissao'] ?? '')) ?></td>
+            <td style="font-size:.8rem"><?= htmlspecialchars((string)$f['fuso_horario']) ?></td>
             <td><?= $f['ativo'] ? 'Sim' : 'Nao' ?></td>
             <td><?= $f['is_admin'] ? 'Sim' : 'Nao' ?></td>
             <td><a href="/admin_editar.php?id=<?= (int)$f['id'] ?>">editar</a></td>
@@ -81,6 +85,7 @@ $funcionarios = ponto_db()
         <label>Nome<br><input type="text" name="nome" required></label>
         <label>Cargo<br><input type="text" name="cargo"></label>
         <label>Data de admissao<br><input type="date" name="data_admissao"></label>
+        <label>Fuso horario<br><select name="fuso_horario"><?= ponto_opcoes_fuso_html(PONTO_FUSO_PADRAO) ?></select></label>
         <label>Senha inicial<br><input type="text" name="senha_inicial" required></label>
         <label><input type="checkbox" name="is_admin" style="width:auto"> E administrador</label>
         <button type="submit">Criar funcionario</button>

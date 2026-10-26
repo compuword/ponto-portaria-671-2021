@@ -30,6 +30,12 @@ pequeno e focado em vez de adaptar algo que nao foi pensado pra isso.
 - Cada colaborador troca a **propria senha** em `minha_senha.php` (pede a
   senha atual, minimo 8 caracteres, fica registrada na auditoria como
   `trocou_senha`); o admin continua podendo redefinir uma senha esquecida.
+- **Fuso horario por colaborador** (padrao `America/Sao_Paulo`, UTC-03:00),
+  definido na tela de edicao do colaborador. O banco guarda todo instante em
+  UTC e isso nunca muda (registro e cadeia de hash intactos); a tela, o
+  espelho de ponto, as exportacoes e o fechamento dos dias/meses usam o fuso
+  do colaborador. O lancamento manual do admin e digitado no fuso do
+  colaborador e convertido para UTC ao gravar.
 - Atestado medico (CID, CRM, dias, arquivo anexo) -- o proprio colaborador
   pode enviar, ou o admin lanca em nome dele. Arquivo fica em BLOB no banco
   (nunca em disco). Dias cobertos por atestado aparecem automaticamente no
@@ -68,6 +74,12 @@ Sem dependencia de biblioteca externa nenhuma -- so extensoes do PHP core
 1. **Banco**: rode `schema.sql` contra seu SQL Server (`sqlcmd -C -S
    localhost -U sa -i schema.sql`). Troque a senha do `ponto_app` que esta
    no script antes de rodar em produção, ou altere depois com `ALTER LOGIN`.
+
+   **Banco ja existente** (criado antes do fuso horario por colaborador): rode
+   uma vez `migrations/001_fuso_horario.sql` (`sqlcmd -C -S localhost -U sa -d
+   ponto -i migrations/001_fuso_horario.sql`). E idempotente. Sem a coluna, o
+   sistema usa `America/Sao_Paulo` para todos e as telas de cadastro e edicao
+   de colaborador nao funcionam.
 
 2. **PHP**: instale o driver ODBC (`apt install php8.X-odbc` no
    Debian/Ubuntu + [ODBC Driver 18 da Microsoft](https://learn.microsoft.com/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server)).
@@ -125,7 +137,9 @@ Sem dependencia de biblioteca externa nenhuma -- so extensoes do PHP core
 
 ```
 schema.sql                      -- schema completo do banco
-src/config.php                  -- conexao PDO + funcoes compartilhadas (auth, hash, relatorio)
+migrations/                     -- alteracoes de schema para bancos ja existentes (rodar na ordem)
+tests/fuso_test.php             -- testes dos helpers de fuso horario (php tests/fuso_test.php, sem banco)
+src/config.php                  -- conexao PDO + funcoes compartilhadas (auth, hash, relatorio, fuso horario)
 src/config.local.php.example    -- template de credenciais (copie e edite)
 src/xlsx.php                    -- gerador de .xlsx do zero (so ZipArchive)
 src/pdf.php                     -- gerador de .pdf do zero (objetos PDF 1.4 a mao)
@@ -144,6 +158,10 @@ coloque a logo da sua empresa nesse caminho, ou remova a tag `<img>` de
   seguinte) aparece como 2 dias "Incompleto" no relatorio, nao soma como 1
   turno so -- o dado esta todo gravado, so o fechamento automatico do total
   nao junta os 2 dias.
+- O fuso e do **colaborador**, nao de cada registro: mudar o fuso de alguem
+  muda a exibicao de todo o historico dele (os registros em si, em UTC, nao
+  mudam). Quem trabalha em dois fusos precisa de um fuso so, o do relogio de
+  referencia da empresa.
 - O hostname da estacao (lido do lease do DHCP) so aparece se o cliente
   tiver renovado o lease recentemente com hostname -- nao e garantido pra
   100% dos acessos. Nao tentamos SSO/Kerberos de proposito: adicionaria uma

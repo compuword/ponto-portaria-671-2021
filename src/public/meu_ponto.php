@@ -5,10 +5,13 @@ require __DIR__ . '/../config.php';
 
 $func = ponto_require_login();
 
-$ano = (int)($_GET['ano'] ?? date('Y'));
-$mes = (int)($_GET['mes'] ?? date('n'));
+$fuso = ponto_fuso_do_funcionario($func['id']);
+$agora_local = ponto_agora_local($fuso);
+
+$ano = (int)($_GET['ano'] ?? $agora_local->format('Y'));
+$mes = (int)($_GET['mes'] ?? $agora_local->format('n'));
 if ($mes < 1 || $mes > 12) {
-    $mes = (int)date('n');
+    $mes = (int)$agora_local->format('n');
 }
 
 $linhas = ponto_relatorio_mensal($func['id'], $ano, $mes);
@@ -53,7 +56,7 @@ $ano_seguinte = $mes === 12 ? $ano + 1 : $ano;
         </tr>
         <?php endforeach; ?>
     </table>
-    <p style="font-size:.8rem;color:#666">Linhas em cinza = dia sem nenhum registro.</p>
+    <p style="font-size:.8rem;color:#666">Linhas em cinza = dia sem nenhum registro. Horarios no fuso <?= htmlspecialchars(ponto_rotulo_fuso($fuso)) ?>.</p>
 </div>
 <script src="/js/inatividade.js"></script>
 </body>

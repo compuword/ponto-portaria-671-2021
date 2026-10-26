@@ -87,6 +87,117 @@ function ponto_require_login(): array
 }
 
 /**
+ * Fuso horario. O banco guarda TODO instante em UTC (registrado_em,
+ * criado_em) e isso nunca muda: o registro e a cadeia de hash continuam
+ * exatamente como foram gravados. A conversao para o horario local do
+ * colaborador acontece so na EXIBICAO e na agregacao por dia/mes. O fuso de
+ * cada colaborador fica em funcionarios.fuso_horario (identificador IANA).
+ */
+const PONTO_FUSO_PADRAO = 'America/Sao_Paulo';
+
+/** Identificadores aceitos, agrupados (Brasil primeiro). */
+function ponto_fusos_disponiveis(): array
+{
+    $brasil = DateTimeZone::listIdentifiers(DateTimeZone::PER_COUNTRY, 'BR');
+    $outros = array_values(array_diff(DateTimeZone::listIdentifiers(), $brasil));
+    return ['Brasil' => $brasil, 'Outros' => $outros];
+}
+
+function ponto_fuso_valido(string $fuso): bool
+{
+    return in_array($fuso, DateTimeZone::listIdentifiers(), true);
+}
+
+/** O proprio fuso se for valido, senao o padrao. */
+function ponto_fuso_ou_padrao(?string $fuso): string
+{
+    return $fuso !== null && ponto_fuso_valido($fuso) ? $fuso : PONTO_FUSO_PADRAO;
+}
+
+/** Ex.: 'America/Sao_Paulo (UTC-03:00)'. */
+function ponto_rotulo_fuso(string $fuso): string
+{
+    $deslocamento = (new DateTimeImmutable('now', new DateTimeZone($fuso)))->format('P');
+    return $fuso . ' (UTC' . $deslocamento . ')';
+}
+
+/** <optgroup>/<option> prontos para um <select name="fuso_horario">. */
+function ponto_opcoes_fuso_html(string $selecionado): string
+{
+    $html = '';
+    foreach (ponto_fusos_disponiveis() as $grupo => $ids) {
+        $html .= '<optgroup label="' . htmlspecialchars($grupo) . '">';
+        foreach ($ids as $id) {
+            $html .= '<option value="' . htmlspecialchars($id) . '"' . ($id === $selecionado ? ' selected' : '') . '>'
+                   . htmlspecialchars(ponto_rotulo_fuso($id)) . '</option>';
+        }
+        $html .= '</optgroup>';
+    }
+    return $html;
+}
+
+/**
+ * Fuso do colaborador. Cai no padrao se a coluna ainda nao existe (banco sem
+ * a migracao migrations/001_fuso_horario.sql) ou se o valor for invalido.
+ */
+function ponto_fuso_do_funcionario(int $funcionario_id): string
+{
+    static $cache = [];
+    if (!isset($cache[$funcionario_id])) {
+        try {
+            $stmt = ponto_db()->prepare('SELECT fuso_horario FROM dbo.funcionarios WHERE id = ?');
+            $stmt->execute([$funcionario_id]);
+            $fuso = (string)$stmt->fetchColumn();
+        } catch (PDOException $e) {
+            $fuso = '';
+        }
+        $cache[$funcionario_id] = ponto_fuso_ou_padrao($fuso);
+    }
+    return $cache[$funcionario_id];
+}
+
+function ponto_agora_local(string $fuso): DateTimeImmutable
+{
+    return new DateTimeImmutable('now', new DateTimeZone($fuso));
+}
+
+/** Instante UTC como vem do banco ('YYYY-MM-DD HH:MM:SS[.fff]') -> texto no fuso pedido. */
+function ponto_utc_para_local(?string $utc, string $fuso, string $formato = 'Y-m-d H:i:s'): string
+{
+    if ($utc === null || $utc === '') {
+        return '';
+    }
+    try {
+        $dt = new DateTimeImmutable(substr($utc, 0, 19), new DateTimeZone('UTC'));
+        return $dt->setTimezone(new DateTimeZone($fuso))->format($formato);
+    } catch (Exception $e) {
+        return $utc;
+    }
+}
+
+/** Horario de parede no fuso do colaborador ('Y-m-d H:i:s') -> UTC ('Y-m-d H:i:s'), para gravar. */
+function ponto_local_para_utc(string $local, string $fuso): string
+{
+    $dt = new DateTimeImmutable($local, new DateTimeZone($fuso));
+    return $dt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+}
+
+/**
+ * [inicio, fim) do dia civil que contem $referencia (padrao: agora) no fuso,
+ * ja em UTC -- para filtrar registros_ponto por dia LOCAL do colaborador.
+ */
+function ponto_limites_dia_utc(string $fuso, ?DateTimeImmutable $referencia = null): array
+{
+    $tz = new DateTimeZone($fuso);
+    $utc = new DateTimeZone('UTC');
+    $dia = ($referencia ?? new DateTimeImmutable('now', $tz))->setTimezone($tz)->setTime(0, 0, 0);
+    return [
+        $dia->setTimezone($utc)->format('Y-m-d H:i:s'),
+        $dia->modify('+1 day')->setTimezone($utc)->format('Y-m-d H:i:s'),
+    ];
+}
+
+/**
  * Grava 1 registro de ponto + a linha de integridade correspondente, numa
  * transacao so. Usado tanto pelo ponto normal (bater.php) quanto pelo
  * lancamento manual do admin (admin_lancamento.php) -- e o UNICO lugar que
@@ -94,7 +205,8 @@ function ponto_require_login(): array
  * fique dessincronizada.
  *
  * $registrado_em_manual: null = o banco decide a hora (SYSUTCDATETIME, ponto
- * normal). Se vier preenchido (formato 'YYYY-MM-DD HH:MM:SS'), usa esse valor
+ * normal). Se vier preenchido (formato 'YYYY-MM-DD HH:MM:SS', SEMPRE EM UTC --
+ * use ponto_local_para_utc() para converter o horario digitado), usa esse valor
  * -- so o lancamento manual do admin deve passar isso, nunca o ponto normal.
  */
 function ponto_gravar_registro(
@@ -187,9 +299,19 @@ function ponto_minutos(string $hhmm): int
  * saida 4h do dia seguinte) aparece como 2 dias incompletos, um com a entrada
  * e outro com a saida -- nao soma como 1 turno so. O dado esta todo ali,
  * so nao fecha o total do dia automaticamente nesse caso.
+ *
+ * Dias, meses e horarios sao os do FUSO do colaborador (funcionarios.
+ * fuso_horario); no banco tudo continua em UTC.
  */
 function ponto_relatorio_mensal(int $funcionario_id, int $ano, int $mes): array
 {
+    $mes = max(1, min(12, $mes));
+    $ano = max(1970, min(2100, $ano));
+    $fuso = ponto_fuso_do_funcionario($funcionario_id);
+    $inicio_mes = new DateTimeImmutable(sprintf('%04d-%02d-01 00:00:00', $ano, $mes), new DateTimeZone($fuso));
+    $fim_mes = $inicio_mes->modify('first day of next month');
+    $utc = new DateTimeZone('UTC');
+
     $stmt = ponto_db()->prepare('SELECT data_admissao, data_desligamento FROM dbo.funcionarios WHERE id = ?');
     $stmt->execute([$funcionario_id]);
     $datas = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -215,19 +337,24 @@ function ponto_relatorio_mensal(int $funcionario_id, int $ano, int $mes): array
                 a.motivo AS anotacao
          FROM dbo.registros_ponto r
          LEFT JOIN dbo.anotacoes_ponto a ON a.registro_id = r.id
-         WHERE r.funcionario_id = ? AND YEAR(r.registrado_em) = ? AND MONTH(r.registrado_em) = ?
+         WHERE r.funcionario_id = ? AND r.registrado_em >= ? AND r.registrado_em < ?
          ORDER BY r.registrado_em'
     );
-    $stmt->execute([$funcionario_id, $ano, $mes]);
+    $stmt->execute([
+        $funcionario_id,
+        $inicio_mes->setTimezone($utc)->format('Y-m-d H:i:s'),
+        $fim_mes->setTimezone($utc)->format('Y-m-d H:i:s'),
+    ]);
     $regs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $porDia = [];
     foreach ($regs as $r) {
-        $data = substr((string)$r['quando'], 0, 10);
+        $local = ponto_utc_para_local((string)$r['quando'], $fuso);
+        $data = substr($local, 0, 10);
         if (!isset($porDia[$data])) {
             $porDia[$data] = ['entrada' => null, 'almoco' => null, 'retorno' => null, 'saida' => null, 'obs' => []];
         }
-        $hora = substr((string)$r['quando'], 11, 5);
+        $hora = substr($local, 11, 5);
         if ($porDia[$data][$r['tipo']] === null) {
             $porDia[$data][$r['tipo']] = $hora;
         }
@@ -301,11 +428,13 @@ function ponto_relatorio_mensal(int $funcionario_id, int $ano, int $mes): array
 function ponto_proximo_tipo_do_dia(int $funcionario_id): ?string
 {
     $sequencia = ['entrada', 'almoco', 'retorno', 'saida'];
+    // "hoje" e o dia civil no fuso do colaborador (e nao o dia UTC, que vira as 21h em Brasilia)
+    [$inicio_dia, $fim_dia] = ponto_limites_dia_utc(ponto_fuso_do_funcionario($funcionario_id));
     $stmt = ponto_db()->prepare(
         'SELECT tipo FROM dbo.registros_ponto
-         WHERE funcionario_id = ? AND manual = 0 AND CAST(registrado_em AS DATE) = CAST(SYSUTCDATETIME() AS DATE)'
+         WHERE funcionario_id = ? AND manual = 0 AND registrado_em >= ? AND registrado_em < ?'
     );
-    $stmt->execute([$funcionario_id]);
+    $stmt->execute([$funcionario_id, $inicio_dia, $fim_dia]);
     $feitos = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
     foreach ($sequencia as $tipo) {

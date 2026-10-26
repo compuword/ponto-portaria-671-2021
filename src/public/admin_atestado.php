@@ -61,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $funcionarios = ponto_db()->query('SELECT id, login, nome FROM dbo.funcionarios WHERE ativo = 1 ORDER BY nome')->fetchAll(PDO::FETCH_ASSOC);
+$fuso_admin = ponto_fuso_do_funcionario($admin['id']);
 
 $stmt = ponto_db()->query(
     "SELECT a.id, f.nome, a.data_inicio, a.dias_afastamento, a.cid, a.ip_origem,
@@ -125,7 +126,7 @@ $recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <td><?= (int)$r['dias_afastamento'] ?></td>
             <td><?= htmlspecialchars((string)($r['cid'] ?? '')) ?></td>
             <td><?= htmlspecialchars($r['enviado_por']) ?></td>
-            <td style="font-size:.8rem"><?= htmlspecialchars($r['quando']) ?></td>
+            <td style="font-size:.8rem"><?= htmlspecialchars(ponto_utc_para_local((string)$r['quando'], $fuso_admin, 'd/m/Y H:i')) ?></td>
             <td style="font-size:.8rem"><?= htmlspecialchars((string)($r['ip_origem'] ?? '')) ?></td>
             <td><?= $r['tem_arquivo'] ? '<a href="/admin_atestado_arquivo.php?id=' . (int)$r['id'] . '">baixar</a>' : '-' ?></td>
         </tr>

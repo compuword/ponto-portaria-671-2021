@@ -4,6 +4,7 @@ session_start();
 require __DIR__ . '/../config.php';
 
 $func = ponto_require_login();
+$fuso = ponto_fuso_do_funcionario($func['id']);
 $erro = '';
 $ok = false;
 
@@ -109,7 +110,7 @@ $meus = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <td><?= htmlspecialchars((string)$m['data_inicio']) ?></td>
             <td><?= (int)$m['dias_afastamento'] ?></td>
             <td><?= htmlspecialchars((string)($m['cid'] ?? '')) ?></td>
-            <td style="font-size:.8rem"><?= htmlspecialchars($m['quando']) ?></td>
+            <td style="font-size:.8rem"><?= htmlspecialchars(ponto_utc_para_local((string)$m['quando'], $fuso, 'd/m/Y H:i')) ?></td>
         </tr>
         <?php endforeach; ?>
     </table>

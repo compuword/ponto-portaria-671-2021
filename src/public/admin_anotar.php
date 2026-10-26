@@ -7,7 +7,7 @@ $admin = ponto_require_admin();
 
 $id = (int)($_GET['id'] ?? 0);
 $stmt = ponto_db()->prepare(
-    'SELECT r.id, r.tipo, CONVERT(VARCHAR(19), r.registrado_em, 120) AS quando, f.nome AS funcionario_nome
+    'SELECT r.id, r.tipo, CONVERT(VARCHAR(19), r.registrado_em, 120) AS quando, f.nome AS funcionario_nome, f.fuso_horario AS fuso
      FROM dbo.registros_ponto r JOIN dbo.funcionarios f ON f.id = r.funcionario_id
      WHERE r.id = ?'
 );
@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         aparece nos relatorios no lugar das horas desse dia.
     </p>
 
-    <p><strong><?= htmlspecialchars($r['funcionario_nome']) ?></strong> -- <?= htmlspecialchars($r['tipo']) ?> em <?= htmlspecialchars($r['quando']) ?></p>
+    <p><strong><?= htmlspecialchars($r['funcionario_nome']) ?></strong> -- <?= htmlspecialchars($r['tipo']) ?> em <?= htmlspecialchars(ponto_utc_para_local((string)$r['quando'], ponto_fuso_ou_padrao((string)$r['fuso']), 'd/m/Y H:i:s')) ?></p>
 
     <?php if ($erro !== ''): ?>
         <p class="erro"><?= htmlspecialchars($erro) ?></p>
