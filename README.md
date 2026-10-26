@@ -65,11 +65,18 @@ pequeno e focado em vez de adaptar algo que nao foi pensado pra isso.
   `src/public/js/inatividade.js` -- altere os dois juntos).
 - Falha de login mostra um banner de erro na propria tela de login (nunca
   uma pagina de erro do servidor).
-- Exportacao para contabilidade: um colaborador ou todos, em XLSX, CSV
-  (separado por `;`) ou PDF -- os 3 formatos gerados do zero em PHP puro,
-  sem biblioteca externa.
-- Cadastro de colaborador com cargo, data de admissao e desligamento (dias
-  fora desse intervalo aparecem como "N/A" no relatorio, nao como falta).
+- Os 3 formatos de exportacao sao gerados do zero em PHP puro (PDF, XLSX com estilos e CSV), sem biblioteca externa.
+- **Espelho de ponto no formato de um modelo comercial** (`docs/espelho_modelo.md`): cabecalho da empresa e do colaborador
+  (CNPJ, PIS, CPF, cargo, equipe), turno, 14 colunas (batidas, credito, debito, intervalo, horas normais, H.E. 1 e 2, adicional
+  noturno, saldo do banco de horas, motivo), linha TOTAIS, legenda e comprovante de aceite eletronico. Tolerancia diaria,
+  folgas, feriados nacionais (calculados) e da empresa, atestados e batidas manuais entram na apuracao. As regras foram
+  conferidas dia a dia contra o modelo (`tests/apuracao_test.php`).
+- **Aceite eletronico** do espelho do mes pelo proprio colaborador (autenticado por login e senha; protocolo = hash do
+  conteudo aceito; se algo mudar depois, o espelho avisa que e preciso aceitar de novo). O colaborador baixa o proprio PDF.
+- Exportacao do espelho para a contabilidade (um colaborador ou todos os ativos) em **PDF** (uma pagina por colaborador, no
+  layout do modelo), **XLSX** (uma aba por colaborador, mais uma aba "Resumo" quando e todos) e **CSV** (uma linha por dia).
+- Cadastro de colaborador com cargo, CPF, PIS, equipe, data de admissao e desligamento (dias fora desse intervalo ficam em
+  branco no espelho, nao viram falta).
 
 ## Stack
 
@@ -92,6 +99,11 @@ Sem dependencia de biblioteca externa nenhuma -- so extensoes do PHP core
      colaborador nao funcionam.
    - `002_atestado_parcial.sql`: atestado parcial (consulta/exame no mesmo
      dia). Sem as colunas, o formulario so oferece atestado de dia inteiro.
+   - `003_espelho.sql`: espelho de ponto (empresa, CPF/PIS/equipe, turnos com
+     vigencia, feriados e aceite do espelho). Sem ela, a tela do espelho avisa
+     que falta aplicar a migracao e as exportacoes ficam indisponiveis.
+   Depois da 003, cadastre em Administracao: **Empresa** (cabecalho e regras),
+   **Turnos** (jornada de cada um) e CPF/PIS/equipe de cada colaborador.
 
 2. **PHP**: instale o driver ODBC (`apt install php8.X-odbc` no
    Debian/Ubuntu + [ODBC Driver 18 da Microsoft](https://learn.microsoft.com/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server)).
@@ -151,8 +163,15 @@ Sem dependencia de biblioteca externa nenhuma -- so extensoes do PHP core
 schema.sql                      -- schema completo do banco
 migrations/                     -- alteracoes de schema para bancos ja existentes (rodar na ordem)
 tests/fuso_test.php             -- testes dos helpers de fuso horario (php tests/fuso_test.php, sem banco)
-tests/horas_test.php            -- testes do calculo de horas com atestado parcial (php tests/horas_test.php, sem banco)
-src/config.php                  -- conexao PDO + funcoes compartilhadas (auth, hash, relatorio, fuso horario)
+tests/apuracao_test.php         -- testes da apuracao do espelho (reproduz o modelo de 10/2021 dia a dia; sem banco)
+tests/saida_test.php            -- testes das saidas do espelho: tela, CSV, XLSX e PDF (sem banco)
+tests/fixtures/                 -- dados do modelo e um espelho de exemplo (pessoa e empresa ficticias)
+docs/espelho_modelo.md          -- analise do modelo de espelho e regras aplicadas
+src/config.php                  -- conexao PDO + funcoes compartilhadas (auth, hash, fuso horario)
+src/apuracao.php                -- apuracao do espelho: regras de credito/debito/extras/saldo (funcoes puras)
+src/espelho.php                 -- carrega do banco e monta o espelho do mes (empresa, turno, dias, totais, aceite)
+src/espelho_saida.php           -- espelho em tela (HTML), CSV e XLSX
+src/espelho_pdf.php             -- espelho em PDF no layout do modelo
 src/config.local.php.example    -- template de credenciais (copie e edite)
 src/xlsx.php                    -- gerador de .xlsx do zero (so ZipArchive)
 src/pdf.php                     -- gerador de .pdf do zero (objetos PDF 1.4 a mao)

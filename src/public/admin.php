@@ -2,6 +2,8 @@
 declare(strict_types=1);
 session_start();
 require __DIR__ . '/../config.php';
+require __DIR__ . '/../apuracao.php';
+require __DIR__ . '/../espelho.php';
 
 $admin = ponto_require_admin();
 $erro = '';
@@ -38,6 +40,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$turno_de = [];
+if (ponto_tem_tabela('funcionario_turno')) {
+    $stmt = ponto_db()->prepare(
+        "SELECT ft.funcionario_id, t.nome FROM dbo.funcionario_turno ft JOIN dbo.turnos t ON t.id = ft.turno_id
+         WHERE ft.id = (SELECT TOP 1 x.id FROM dbo.funcionario_turno x WHERE x.funcionario_id = ft.funcionario_id AND x.vigencia_inicio <= ?
+                        ORDER BY x.vigencia_inicio DESC, x.id DESC)"
+    );
+    $stmt->execute([ponto_agora_local(PONTO_FUSO_PADRAO)->format('Y-m-d')]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $turno_de[(int)$r['funcionario_id']] = (string)$r['nome'];
+    }
+    $stmt = null;
+}
+
 $funcionarios = ponto_db()
     ->query('SELECT id, login, nome, ativo, is_admin, cargo, data_admissao, data_desligamento, fuso_horario FROM dbo.funcionarios ORDER BY nome')
     ->fetchAll(PDO::FETCH_ASSOC);
@@ -53,7 +69,7 @@ $funcionarios = ponto_db()
 <div class="caixa" style="max-width:900px">
     <img src="/img/logo.png" alt="Compuword" class="logo">
     <h1>Administracao de funcionarios</h1>
-    <p><a href="/bater.php">Voltar para o ponto</a> | <a href="/admin_lancamento.php">Lancamento manual</a> | <a href="/admin_atestado.php">Atestado medico</a> | <a href="/admin_verificar.php">Verificar integridade</a> | <a href="/admin_relatorio.php">Exportar p/ contabilidade</a> | <a href="/admin_auditoria.php">Auditoria</a> | <a href="/logout.php">Sair</a></p>
+    <p><a href="/bater.php">Voltar para o ponto</a> | <a href="/admin_lancamento.php">Lancamento manual</a> | <a href="/admin_atestado.php">Atestado medico</a> | <a href="/admin_verificar.php">Verificar integridade</a> | <a href="/admin_espelho.php">Espelho</a> | <a href="/admin_relatorio.php">Exportar p/ contabilidade</a> | <a href="/admin_turnos.php">Turnos</a> | <a href="/admin_feriados.php">Feriados</a> | <a href="/admin_empresa.php">Empresa</a> | <a href="/admin_auditoria.php">Auditoria</a> | <a href="/logout.php">Sair</a></p>
 
     <?php if (($_GET['ok'] ?? '') === '1'): ?>
         <p class="ok">Funcionario criado com sucesso.</p>
@@ -63,13 +79,14 @@ $funcionarios = ponto_db()
     <?php endif; ?>
 
     <table>
-        <tr><th>Login</th><th>Nome</th><th>Cargo</th><th>Admissao</th><th>Fuso</th><th>Ativo</th><th>Admin</th><th></th></tr>
+        <tr><th>Login</th><th>Nome</th><th>Cargo</th><th>Admissao</th><th>Turno</th><th>Fuso</th><th>Ativo</th><th>Admin</th><th></th></tr>
         <?php foreach ($funcionarios as $f): ?>
         <tr>
             <td><?= htmlspecialchars($f['login']) ?></td>
             <td><?= htmlspecialchars($f['nome']) ?></td>
             <td><?= htmlspecialchars((string)($f['cargo'] ?? '')) ?></td>
             <td><?= htmlspecialchars((string)($f['data_admissao'] ?? '')) ?></td>
+            <td style="font-size:.8rem"><?= htmlspecialchars($turno_de[(int)$f['id']] ?? '-') ?></td>
             <td style="font-size:.8rem"><?= htmlspecialchars((string)$f['fuso_horario']) ?></td>
             <td><?= $f['ativo'] ? 'Sim' : 'Nao' ?></td>
             <td><?= $f['is_admin'] ? 'Sim' : 'Nao' ?></td>

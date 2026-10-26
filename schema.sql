@@ -24,6 +24,10 @@ CREATE TABLE dbo.funcionarios (
     -- Fuso em que o colaborador ve os proprios horarios e fecha os dias
     -- (identificador IANA). Os instantes continuam gravados em UTC.
     fuso_horario VARCHAR(64) NOT NULL DEFAULT 'America/Sao_Paulo',
+    -- Dados que aparecem no cabecalho do espelho de ponto (so digitos em cpf/pis).
+    cpf VARCHAR(11) NULL,
+    pis VARCHAR(11) NULL,
+    equipe NVARCHAR(100) NULL,
     criado_em DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 GO
@@ -109,6 +113,74 @@ CREATE TABLE dbo.atestados_medicos (
 );
 GO
 
+-- Empresa (uma linha so): cabecalho do espelho e regras de apuracao.
+CREATE TABLE dbo.empresa (
+    id TINYINT NOT NULL CONSTRAINT PK_empresa PRIMARY KEY CONSTRAINT CK_empresa_unica CHECK (id = 1),
+    razao_social NVARCHAR(200) NULL,
+    unidade NVARCHAR(200) NULL,
+    cnpj VARCHAR(14) NULL,
+    inscricao_estadual VARCHAR(30) NULL,
+    tolerancia_min SMALLINT NOT NULL CONSTRAINT DF_empresa_tol DEFAULT 10 CONSTRAINT CK_empresa_tol CHECK (tolerancia_min BETWEEN 0 AND 60),
+    noturno_inicio TIME(0) NOT NULL CONSTRAINT DF_empresa_ni DEFAULT '22:00',
+    noturno_fim TIME(0) NOT NULL CONSTRAINT DF_empresa_nf DEFAULT '05:00',
+    fator_he1 DECIMAL(4,2) NOT NULL CONSTRAINT DF_empresa_f1 DEFAULT 1.0,
+    fator_he2 DECIMAL(4,2) NOT NULL CONSTRAINT DF_empresa_f2 DEFAULT 2.0,
+    abono_remunerado BIT NOT NULL CONSTRAINT DF_empresa_abono DEFAULT 1,
+    inicio_controle DATE NULL,
+    atualizado_em DATETIME2 NOT NULL CONSTRAINT DF_empresa_atu DEFAULT SYSUTCDATETIME()
+);
+GO
+
+INSERT INTO dbo.empresa (id) VALUES (1);
+GO
+
+-- Turnos (escala semanal em JSON; dia 0 = domingo; dia ausente = folga) e quem cumpre qual turno a partir de que data.
+-- So INSERT: mudar a escala de alguem = turno novo + atribuicao com nova vigencia, sem reescrever o passado.
+CREATE TABLE dbo.turnos (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    nome NVARCHAR(100) NOT NULL CONSTRAINT UQ_turnos_nome UNIQUE,
+    horarios NVARCHAR(1000) NOT NULL CONSTRAINT CK_turnos_json CHECK (ISJSON(horarios) = 1),
+    criado_por INT NULL FOREIGN KEY REFERENCES dbo.funcionarios(id),
+    criado_em DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+
+CREATE TABLE dbo.funcionario_turno (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    funcionario_id INT NOT NULL FOREIGN KEY REFERENCES dbo.funcionarios(id),
+    turno_id INT NOT NULL FOREIGN KEY REFERENCES dbo.turnos(id),
+    vigencia_inicio DATE NOT NULL,
+    criado_por INT NULL FOREIGN KEY REFERENCES dbo.funcionarios(id),
+    criado_em DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+CREATE INDEX IX_funcionario_turno ON dbo.funcionario_turno (funcionario_id, vigencia_inicio);
+GO
+
+-- Feriados estaduais/municipais/pontes (os nacionais sao calculados pelo sistema).
+CREATE TABLE dbo.feriados (
+    data DATE NOT NULL PRIMARY KEY,
+    nome NVARCHAR(100) NOT NULL,
+    criado_por INT NULL FOREIGN KEY REFERENCES dbo.funcionarios(id),
+    criado_em DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+
+-- Aceite eletronico do espelho do mes pelo proprio colaborador; o hash prova qual conteudo foi aceito.
+CREATE TABLE dbo.aceites_espelho (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    funcionario_id INT NOT NULL FOREIGN KEY REFERENCES dbo.funcionarios(id),
+    ano SMALLINT NOT NULL,
+    mes TINYINT NOT NULL,
+    espelho_hash CHAR(64) NOT NULL,
+    protocolo CHAR(32) NOT NULL,
+    ip_origem VARCHAR(45) NOT NULL,
+    user_agent NVARCHAR(500) NULL,
+    hostname_origem VARCHAR(255) NULL,
+    aceito_em DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+CREATE INDEX IX_aceites_espelho ON dbo.aceites_espelho (funcionario_id, ano, mes);
+GO
+
 -- Usuario da aplicacao -- TROQUE a senha abaixo.
 IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = 'ponto_app')
     CREATE LOGIN ponto_app WITH PASSWORD = 'TROQUE_ESTA_SENHA_123!', CHECK_POLICY = ON;
@@ -127,6 +199,12 @@ GRANT SELECT, INSERT ON dbo.integridade_ponto TO ponto_app;
 GRANT SELECT, INSERT ON dbo.anotacoes_ponto TO ponto_app;
 GRANT SELECT, INSERT ON dbo.log_acesso TO ponto_app;
 GRANT SELECT, INSERT ON dbo.atestados_medicos TO ponto_app;
+-- Configuracao simples: empresa e feriados sao editaveis; turnos, atribuicao de turno e aceite so INSERT.
+GRANT SELECT, INSERT, UPDATE ON dbo.empresa TO ponto_app;
+GRANT SELECT, INSERT ON dbo.turnos TO ponto_app;
+GRANT SELECT, INSERT ON dbo.funcionario_turno TO ponto_app;
+GRANT SELECT, INSERT, DELETE ON dbo.feriados TO ponto_app;
+GRANT SELECT, INSERT ON dbo.aceites_espelho TO ponto_app;
 GO
 
 PRINT 'Schema criado. Crie o primeiro admin manualmente (veja o README, secao "Primeiro acesso").';
