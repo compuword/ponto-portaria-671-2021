@@ -1,0 +1,19 @@
+:root {
+    --cpw-escuro: #004962;
+    --cpw-claro: #4ed8ea;
+}
+body { font-family: sans-serif; background: #cfe8f0; margin: 0; padding: 2rem; color: #1a1a1a; }
+.caixa { max-width: 480px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.logo { display: block; max-width: 420px; width: 100%; margin: 0 auto .5rem; }
+h1, h2 { color: var(--cpw-escuro); }
+a { color: var(--cpw-escuro); }
+label { display: block; margin: .75rem 0; }
+input { width: 100%; padding: .5rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+button { padding: .6rem 1.1rem; margin: .25rem; cursor: pointer; background: var(--cpw-escuro); color: #fff; border: none; border-radius: 5px; font-weight: bold; }
+button:hover { background: var(--cpw-claro); color: var(--cpw-escuro); }
+.botoes { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+.erro { color: #b00020; }
+.ok { color: #0a7d2c; }
+table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+th { text-align: left; padding: .4rem; border-bottom: 2px solid var(--cpw-escuro); font-size: .9rem; color: var(--cpw-escuro); }
+td { text-align: left; padding: .4rem; border-bottom: 1px solid #ddd; font-size: .9rem; }

@@ -1,0 +1,9 @@
+<?php
+// Copie para config.local.php (NAO versionado) e preencha com os dados reais
+// do seu ambiente. Alternativa: defina as mesmas chaves como variavel de
+// ambiente do PHP-FPM/systemd -- nesse caso este arquivo nem precisa existir.
+
+define('PONTO_DB_HOST', 'localhost');
+define('PONTO_DB_USER', 'ponto_app');
+define('PONTO_DB_PASS', 'TROQUE_ESTA_SENHA');
+define('PONTO_DB_NAME', 'ponto');
